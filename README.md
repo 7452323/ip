@@ -16,5 +16,5 @@ curl -sL https://raw.githubusercontent.com/7452323/ip/main/ips.txt
 | Schedule | Action |
 |----------|--------|
 | Daily 00:00 UTC | Search & verify new IPs |
-| Weekly Sun 00:00 UTC | Re-verify all IPs & cleanup |
+| Weekly Sun 01:00 UTC | Re-verify all IPs & cleanup |
 

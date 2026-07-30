@@ -1,0 +1,53 @@
+name: Daily IP Search & Verify
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # Every day at 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  search-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Search free proxies
+        run: |
+          # Fetch multiple proxy sources
+          curl -sL "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all&ssl=all&anonymity=all" -o /tmp/p1.txt
+          curl -sL "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt" -o /tmp/p2.txt
+          curl -sL "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt" -o /tmp/p3.txt
+          
+          # Extract unique IP:PORT
+          cat /tmp/p1.txt /tmp/p2.txt /tmp/p3.txt | grep -oE "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}:[0-9]+" | sort -u > /tmp/candidates.txt
+          echo "Candidates: $(wc -l < /tmp/candidates.txt)"
+
+      - name: Verify proxies
+        run: |
+          > /tmp/verified.txt
+          while IFS= read -r proxy; do
+            [ -z "$proxy" ] && continue
+            result=$(curl -s --max-time 6 -x "socks5h://$proxy" "https://ipinfo.io/ip" 2>/dev/null)
+            if echo "$result" | grep -qE "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$"; then
+              echo "$result" >> /tmp/verified.txt
+            fi
+          done < <(head -300 /tmp/candidates.txt)
+          
+          # Merge with existing IPs, deduplicate
+          cat ips.txt /tmp/verified.txt 2>/dev/null | grep -oE "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$" | sort -u -t. -k1,1n -k2,2n -k3,3n -k4,4n > ips_new.txt
+          mv ips_new.txt ips.txt
+          echo "Total IPs: $(wc -l < ips.txt)"
+
+      - name: Update README stats
+        run: |
+          sed -i "s/Total IPs:.*/Total IPs: $(wc -l < ips.txt)/" README.md
+          sed -i "s/Last updated:.*/Last updated: $(date -u +%Y-%m-%d)/" README.md
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ips.txt README.md
+          git diff --quiet && git diff --staged --quiet || git commit -m "Daily update: $(date -u +%Y-%m-%d)"
+          git push
+
